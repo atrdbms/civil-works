@@ -2,10 +2,13 @@
   "name": "civil-works",
   "private": true,
   "type": "module",
-  "scripts": { "kml": "node scripts/build-kml.mjs" },
+  "scripts": {
+    "kml": "node scripts/build-kml.mjs"
+  },
   "dependencies": {
     "@tmcw/togeojson": "7.1.4",
     "@xmldom/xmldom": "0.9.8",
-    "fflate": "0.8.2"
+    "fflate": "0.8.2",
+    "exceljs": "4.4.0"
   }
 }

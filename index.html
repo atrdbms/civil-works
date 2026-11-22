@@ -145,10 +145,10 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
    <div class="msg info" id="addOff" hidden>Saving isn't switched on yet. The Google Apps Script link still needs to be added to the site.</div>
    <div class="fgrid">
     <label><span>Year <span class="req">*</span></span><select id="aYear" required></select></label>
-    <label><span>Division <span class="req">*</span></span><input id="aDivision" list="dlDivision" required></label>
-    <label><span>Range <span class="req">*</span></span><input id="aRange" list="dlRange" required></label>
-    <label><span>Section <span class="req">*</span></span><input id="aSection" list="dlSection" required></label>
-    <label><span>Beat <span class="req">*</span></span><input id="aBeat" list="dlBeat" required></label>
+    <label><span>Division <span class="req">*</span></span><select id="aDivision" required></select></label>
+    <label><span>Range <span class="req">*</span></span><select id="aRange" required></select></label>
+    <label><span>Section <span class="req">*</span></span><select id="aSection" required></select></label>
+    <label><span>Beat <span class="req">*</span></span><select id="aBeat" required></select></label>
     <label><span>Compartment No. <small>(optional)</small></span><input id="aComp" inputmode="numeric"></label>
     <label><span>Structure <span class="req">*</span></span><input id="aStructure" list="dlStructure" required></label>
     <label><span>Scheme <small>(optional)</small></span><input id="aScheme" list="dlScheme"></label>
@@ -170,7 +170,7 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
    <button type="submit" class="btn" id="aSave">Save record</button>
    <div id="aMsg"></div>
   </form>
-  <datalist id="dlDivision"></datalist><datalist id="dlRange"></datalist><datalist id="dlSection"></datalist><datalist id="dlBeat"></datalist><datalist id="dlStructure"></datalist><datalist id="dlScheme"></datalist>
+  <datalist id="dlStructure"></datalist><datalist id="dlScheme"></datalist>
  </section>
 
  <section class="view on" id="v-dash">
@@ -412,10 +412,19 @@ $('#printRep').addEventListener('click',()=>{document.querySelectorAll('.view').
 // ---- Add record ----
 function fy(d){const y=d.getFullYear(),m=d.getMonth();const s=m>=3?y:y-1;return s+'-'+String((s+1)%100).padStart(2,'0')}
 {const now=new Date(),cur=fy(now),start=2018,end=+cur.slice(0,4)+1;let o='';for(let y=end;y>=start;y--){const v=y+'-'+String((y+1)%100).padStart(2,'0');o+=`<option${v===cur?' selected':''}>${v}</option>`}$('#aYear').innerHTML=o}
-const AF=[['Division','division',null],['Range','range','Division'],['Section','section','Range'],['Beat','beat','Section'],['Structure','structure',null],['Scheme','scheme',null]];
-function fillAddLists(){for(const[n,k,parent]of AF){let rows=ALL;if(parent){const pv=$('#a'+parent).value.trim();const pk=AF.find(a=>a[0]===parent)[1];if(pv&&rows.some(d=>d[pk]===pv))rows=rows.filter(d=>d[pk]===pv)}
-  $('#dl'+n).innerHTML=uniq(rows,k).filter(v=>v!=='(blank)').map(v=>`<option value="${esc(v)}">`).join('')}}
-['aDivision','aRange','aSection'].forEach(i=>$('#'+i).addEventListener('change',fillAddLists));
+// Division > Range > Section > Beat come from the master list (Beats_Sections_ranges.xlsx, copied to assets/beats.json by the GitHub Action)
+let BEATS=[];const HL=['Division','Range','Section','Beat'];
+function fillHier(from){for(let i=from;i<4;i++){const sel=$('#a'+HL[i]);const prev=sel.value;
+  const rows=BEATS.filter(r=>HL.slice(0,i).every((h,j)=>r[j]===$('#a'+h).value));
+  const opts=[...new Set(rows.map(r=>r[i]))].sort((a,b)=>a.localeCompare(b,'en',{numeric:true,sensitivity:'base'}));
+  const ready=i===0||$('#a'+HL[i-1]).value;
+  sel.innerHTML=`<option value="">${ready?'Select '+HL[i].toLowerCase():'Select '+HL[i-1].toLowerCase()+' first'}</option>`+opts.map(v=>`<option${v===prev?' selected':''}>${esc(v)}</option>`).join('');
+  sel.disabled=!ready||!opts.length}}
+HL.slice(0,3).forEach((h,i)=>$('#a'+h).addEventListener('change',()=>fillHier(i+1)));
+fetch('assets/beats.json?t='+Date.now()).then(r=>r.json()).then(j=>{BEATS=j;fillHier(0)}).catch(()=>{$('#aMsg').innerHTML='<div class="msg err">Could not load the division / range / section / beat list. Refresh the page.</div>'});
+fillHier(0);
+const AF=[['Structure','structure'],['Scheme','scheme']];
+function fillAddLists(){for(const[n,k]of AF)$('#dl'+n).innerHTML=uniq(ALL,k).filter(v=>v!=='(blank)').map(v=>`<option value="${esc(v)}">`).join('')}
 try{const pin=localStorage.getItem('atrPin');if(pin){$('#aPin').value=pin;$('#aRem').checked=true}}catch(e){}
 if(!ADD_URL){$('#addOff').hidden=false}
 let photoData='';
