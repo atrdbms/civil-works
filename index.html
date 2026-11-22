@@ -164,6 +164,13 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
       <input type="file" id="aGalIn" accept="image/*" hidden>
       <img id="pPrev" alt="Selected photo preview">
      </div></div>
+    <div class="wide"><div style="font-size:14px;font-weight:600;margin-bottom:6px">KML / KMZ file <small style="font-weight:400;color:var(--mute)">(optional, boundary or line of the work)</small></div>
+     <div class="photobox">
+      <button type="button" class="btn ghost" id="aKmlBtn">Choose KML / KMZ file</button>
+      <input type="file" id="aKmlIn" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" hidden>
+      <span class="kmlinfo" id="aKmlInfo"></span>
+      <button type="button" class="btn ghost" id="aKmlClr" hidden>Remove</button>
+     </div></div>
     <label><span>Entry PIN <span class="req">*</span></span><input id="aPin" type="password" inputmode="numeric" autocomplete="off"></label>
     <label style="align-self:end;font-weight:400;display:flex;gap:8px;align-items:center"><input type="checkbox" id="aRem" style="min-height:auto;width:20px;height:20px"> Remember PIN on this device</label>
    </div>
@@ -429,7 +436,20 @@ for(const[n]of AF)$('#a'+n).addEventListener('change',()=>{const o=$('#a'+n+'Oth
 const pick=n=>{const v=$('#a'+n).value;return v==='__other'?$('#a'+n+'Other').value.trim():v};
 try{const pin=localStorage.getItem('atrPin');if(pin){$('#aPin').value=pin;$('#aRem').checked=true}}catch(e){}
 if(!ADD_URL){$('#addOff').hidden=false}
-let photoData='';
+let photoData='',kmlData='',kmlName='';
+$('#aKmlBtn').addEventListener('click',()=>$('#aKmlIn').click());
+$('#aKmlClr').addEventListener('click',()=>{kmlData=kmlName='';$('#aKmlInfo').textContent='';$('#aKmlClr').hidden=true});
+$('#aKmlIn').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{if(f.size>8e6)throw new Error('file is larger than 8 MB');
+    const buf=new Uint8Array(await f.arrayBuffer());let txt;const kmz=buf[0]===0x50&&buf[1]===0x4b;
+    if(kmz){const z=fflate.unzipSync(buf);const k=Object.keys(z).find(n=>/\.kml$/i.test(n));if(!k)throw new Error('no .kml inside the KMZ');txt=fflate.strFromU8(z[k])}else txt=new TextDecoder().decode(buf);
+    const gj=toGeoJSON.kml(new DOMParser().parseFromString(txt,'text/xml'));if(!gj.features.length)throw new Error('no shapes found');
+    let bin='';for(let i=0;i<buf.length;i+=32768)bin+=String.fromCharCode.apply(null,buf.subarray(i,i+32768));
+    kmlData=btoa(bin);kmlName=kmz?'kmz':'kml';
+    let msg=`${f.name}: ${gj.features.length} shape${gj.features.length>1?'s':''}`;
+    if(!$('#aLat').value&&!$('#aLng').value&&typeof L!=='undefined'){const c=L.geoJSON(gj).getBounds().getCenter();$('#aLat').value=c.lat.toFixed(6);$('#aLng').value=c.lng.toFixed(6);msg+='. Latitude/longitude filled from its centre.'}
+    $('#aKmlInfo').textContent=msg;$('#aKmlClr').hidden=false;
+  }catch(err){kmlData=kmlName='';$('#aKmlInfo').textContent='Could not read '+f.name+': '+err.message;$('#aKmlClr').hidden=true}});
 $('#aCam').addEventListener('click',()=>$('#aCamIn').click());$('#aGal').addEventListener('click',()=>$('#aGalIn').click());
 async function takePhoto(e){const f=e.target.files[0];e.target.value='';if(!f)return;
   try{const url=URL.createObjectURL(f);const img=new Image();await new Promise((ok,bad)=>{img.onload=ok;img.onerror=()=>bad(new Error('not an image'));img.src=url});
@@ -453,13 +473,14 @@ $('#addForm').addEventListener('submit',async e=>{e.preventDefault();
   if((lat||lng)&&!(isFinite(+lat)&&isFinite(+lng)&&+lat>5&&+lat<40&&+lng>65&&+lng<100)){addMsg('err','Latitude and longitude don\'t look right. Use decimal degrees, for example 16.18 and 78.55.');return}
   if(!ADD_URL){addMsg('info','Saving isn\'t switched on yet, so this record was not saved.');return}
   try{if($('#aRem').checked)localStorage.setItem('atrPin',v('aPin'));else localStorage.removeItem('atrPin')}catch(e){}
-  const body={pin:v('aPin'),year:v('aYear'),division:v('aDivision'),range:v('aRange'),section:v('aSection'),beat:v('aBeat'),comp:v('aComp'),location:v('aLocation'),scheme:pick('Scheme'),structure:pick('Structure'),lat,lng,photo:photoData};
+  const body={pin:v('aPin'),year:v('aYear'),division:v('aDivision'),range:v('aRange'),section:v('aSection'),beat:v('aBeat'),comp:v('aComp'),location:v('aLocation'),scheme:pick('Scheme'),structure:pick('Structure'),lat,lng,photo:photoData,kml:kmlData,kmlType:kmlName};
   $('#aSave').disabled=true;addMsg('info','Saving… uploading the photo can take a little while on a slow connection.');
   try{let j=await (await fetch(ADD_URL,{method:'POST',body:JSON.stringify(body)})).json();
     // older script versions required a location: retry once with a dash
     if(!j.ok&&/missing location/i.test(j.error||'')&&!body.location){body.location='-';j=await (await fetch(ADD_URL,{method:'POST',body:JSON.stringify(body)})).json()}
     if(!j.ok)throw new Error(j.error||'not saved');
-    addMsg('ok',`Saved as ID <b>${esc(j.id)}</b>. It now shows in the dashboard, map and reports.`);
+    addMsg('ok',`Saved as ID <b>${esc(j.id)}</b>. It now shows in the dashboard, map and reports.`+(kmlData?(j.kml?' The KML shape appears on the map within about 15 minutes.':' <b>The KML file was not saved</b>: the Google script needs updating (see Code.gs).'):''));
+    kmlData=kmlName='';$('#aKmlInfo').textContent='';$('#aKmlClr').hidden=true;
     ['aComp','aLocation','aLat','aLng','aStructureOther','aSchemeOther'].forEach(i=>$('#'+i).value='');$('#aStructureOther').hidden=$('#aSchemeOther').hidden=true;photoData='';$('#pPrev').style.display='none';$('#aGpsInfo').textContent='';
     reloadSheet();
   }catch(err){addMsg('err','Not saved: '+esc(err.message)+'. Check the connection and the PIN, then try again.')}

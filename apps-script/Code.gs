@@ -67,12 +67,21 @@ function doPost(e) {
       set('latitude', num(d.lat));
       set('longitude', num(d.lng));
       set('photourl', photoUrl);
+      let kmlUrl = '';
+      if (d.kml) {
+        const ext = d.kmlType === 'kmz' ? 'kmz' : 'kml';
+        const mime = ext === 'kmz' ? 'application/vnd.google-earth.kmz' : 'application/vnd.google-earth.kml+xml';
+        const kname = id + '.KML.' + Utilities.formatDate(now, TZ, 'HHmmss') + '.' + ext;
+        const kf = DriveApp.getFolderById(FOLDER_ID).createFile(Utilities.newBlob(Utilities.base64Decode(String(d.kml)), mime, kname));
+        kmlUrl = 'https://drive.google.com/file/d/' + kf.getId() + '/view';
+        set('kmlfile', kmlUrl);
+      }
       set('picturetakendate', Utilities.parseDate(Utilities.formatDate(now, TZ, 'yyyy-MM-dd'), TZ, 'yyyy-MM-dd'));
       sh.appendRow(row);
       // keep Year as text (e.g. 2026-27)
       const yc = col('year'); if (yc >= 0) sh.getRange(sh.getLastRow(), yc + 1).setNumberFormat('@').setValue(String(d.year).trim());
       const dc = col('picturetakendate'); if (dc >= 0) sh.getRange(sh.getLastRow(), dc + 1).setNumberFormat('dd/mm/yyyy');
-      return out({ ok: true, id: id, photo: photoUrl });
+      return out({ ok: true, id: id, photo: photoUrl, kml: kmlUrl });
     } finally {
       lock.releaseLock();
     }
