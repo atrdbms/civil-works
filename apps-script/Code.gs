@@ -29,7 +29,7 @@ function doPost(e) {
     const pin = PropertiesService.getScriptProperties().getProperty('PIN');
     if (!pin || pin === 'CHANGE-ME-1234') return out({ ok: false, error: 'PIN is not set up yet' });
     if (String(d.pin || '') !== pin) return out({ ok: false, error: 'Wrong PIN' });
-    for (const k of ['year', 'division', 'range', 'section', 'beat', 'location', 'structure']) {
+    for (const k of ['year', 'division', 'range', 'section', 'beat', 'structure']) {
       if (!String(d[k] || '').trim()) return out({ ok: false, error: 'Missing ' + k });
     }
     if (!d.photo) return out({ ok: false, error: 'Missing photo' });
@@ -60,7 +60,7 @@ function doPost(e) {
       set('section', String(d.section).trim());
       set('beat', String(d.beat).trim());
       set('compno', num(d.comp));
-      set('location', String(d.location).trim());
+      set('location', String(d.location || '').trim());
       set('scheme', String(d.scheme || '').trim());
       set('year', String(d.year).trim());
       set('structure', String(d.structure).trim());

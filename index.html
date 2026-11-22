@@ -150,9 +150,9 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
     <label><span>Section <span class="req">*</span></span><select id="aSection" required></select></label>
     <label><span>Beat <span class="req">*</span></span><select id="aBeat" required></select></label>
     <label><span>Compartment No. <small>(optional)</small></span><input id="aComp" inputmode="numeric"></label>
-    <label><span>Structure <span class="req">*</span></span><input id="aStructure" list="dlStructure" required></label>
-    <label><span>Scheme <small>(optional)</small></span><input id="aScheme" list="dlScheme"></label>
-    <label class="wide"><span>Location (place name) <span class="req">*</span></span><input id="aLocation" required placeholder="e.g. Bowramma watch tower area"></label>
+    <label><span>Structure <span class="req">*</span></span><select id="aStructure" required></select><input id="aStructureOther" placeholder="Type the structure name" hidden></label>
+    <label><span>Scheme <small>(optional)</small></span><select id="aScheme"></select><input id="aSchemeOther" placeholder="Type the scheme name" hidden></label>
+    <label class="wide"><span>Location (place name) <small>(optional)</small></span><input id="aLocation" placeholder="e.g. Bowramma watch tower area"></label>
     <label>Latitude<input id="aLat" inputmode="decimal" placeholder="16.18"></label>
     <label>Longitude<input id="aLng" inputmode="decimal" placeholder="78.55"></label>
     <div class="wide"><button type="button" class="btn ghost" id="aGps">Use my current location</button> <span class="kmlinfo" id="aGpsInfo"></span></div>
@@ -170,7 +170,6 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
    <button type="submit" class="btn" id="aSave">Save record</button>
    <div id="aMsg"></div>
   </form>
-  <datalist id="dlStructure"></datalist><datalist id="dlScheme"></datalist>
  </section>
 
  <section class="view on" id="v-dash">
@@ -424,7 +423,10 @@ HL.slice(0,3).forEach((h,i)=>$('#a'+h).addEventListener('change',()=>fillHier(i+
 fetch('assets/beats.json?t='+Date.now()).then(r=>r.json()).then(j=>{BEATS=j;fillHier(0)}).catch(()=>{$('#aMsg').innerHTML='<div class="msg err">Could not load the division / range / section / beat list. Refresh the page.</div>'});
 fillHier(0);
 const AF=[['Structure','structure'],['Scheme','scheme']];
-function fillAddLists(){for(const[n,k]of AF)$('#dl'+n).innerHTML=uniq(ALL,k).filter(v=>v!=='(blank)').map(v=>`<option value="${esc(v)}">`).join('')}
+function fillAddLists(){for(const[n,k]of AF){const sel=$('#a'+n),prev=sel.value;
+  sel.innerHTML=`<option value="">${n==='Scheme'?'None':'Select structure'}</option>`+uniq(ALL,k).filter(v=>v!=='(blank)').map(v=>`<option${v===prev?' selected':''}>${esc(v)}</option>`).join('')+`<option value="__other"${prev==='__other'?' selected':''}>Others (type below)</option>`}}
+for(const[n]of AF)$('#a'+n).addEventListener('change',()=>{const o=$('#a'+n+'Other');o.hidden=$('#a'+n).value!=='__other';if(!o.hidden)o.focus()});
+const pick=n=>{const v=$('#a'+n).value;return v==='__other'?$('#a'+n+'Other').value.trim():v};
 try{const pin=localStorage.getItem('atrPin');if(pin){$('#aPin').value=pin;$('#aRem').checked=true}}catch(e){}
 if(!ADD_URL){$('#addOff').hidden=false}
 let photoData='';
@@ -442,19 +444,23 @@ $('#aGps').addEventListener('click',()=>{if(!navigator.geolocation){$('#aGpsInfo
 function addMsg(t,m){$('#aMsg').innerHTML=`<div class="msg ${t}">${m}</div>`}
 $('#addForm').addEventListener('submit',async e=>{e.preventDefault();
   const v=id=>$('#'+id).value.trim();
-  const miss=[['aDivision','Division'],['aRange','Range'],['aSection','Section'],['aBeat','Beat'],['aStructure','Structure'],['aLocation','Location'],['aPin','Entry PIN']].filter(([i])=>!v(i)).map(x=>x[1]);
+  const miss=[['aDivision','Division'],['aRange','Range'],['aSection','Section'],['aBeat','Beat'],['aPin','Entry PIN']].filter(([i])=>!v(i)).map(x=>x[1]);
+  if(!pick('Structure'))miss.splice(4,0,$('#aStructure').value==='__other'?'Structure (type the name)':'Structure');
+  if($('#aScheme').value==='__other'&&!pick('Scheme'))miss.push('Scheme (type the name)');
   if(!photoData)miss.push('Photo');
   if(miss.length){addMsg('err','Please fill in: '+esc(miss.join(', ')));return}
   const lat=v('aLat'),lng=v('aLng');
   if((lat||lng)&&!(isFinite(+lat)&&isFinite(+lng)&&+lat>5&&+lat<40&&+lng>65&&+lng<100)){addMsg('err','Latitude and longitude don\'t look right. Use decimal degrees, for example 16.18 and 78.55.');return}
   if(!ADD_URL){addMsg('info','Saving isn\'t switched on yet, so this record was not saved.');return}
   try{if($('#aRem').checked)localStorage.setItem('atrPin',v('aPin'));else localStorage.removeItem('atrPin')}catch(e){}
-  const body={pin:v('aPin'),year:v('aYear'),division:v('aDivision'),range:v('aRange'),section:v('aSection'),beat:v('aBeat'),comp:v('aComp'),location:v('aLocation'),scheme:v('aScheme'),structure:v('aStructure'),lat,lng,photo:photoData};
+  const body={pin:v('aPin'),year:v('aYear'),division:v('aDivision'),range:v('aRange'),section:v('aSection'),beat:v('aBeat'),comp:v('aComp'),location:v('aLocation'),scheme:pick('Scheme'),structure:pick('Structure'),lat,lng,photo:photoData};
   $('#aSave').disabled=true;addMsg('info','Saving… uploading the photo can take a little while on a slow connection.');
-  try{const r=await fetch(ADD_URL,{method:'POST',body:JSON.stringify(body)});const j=await r.json();
+  try{let j=await (await fetch(ADD_URL,{method:'POST',body:JSON.stringify(body)})).json();
+    // older script versions required a location: retry once with a dash
+    if(!j.ok&&/missing location/i.test(j.error||'')&&!body.location){body.location='-';j=await (await fetch(ADD_URL,{method:'POST',body:JSON.stringify(body)})).json()}
     if(!j.ok)throw new Error(j.error||'not saved');
     addMsg('ok',`Saved as ID <b>${esc(j.id)}</b>. It now shows in the dashboard, map and reports.`);
-    ['aComp','aLocation','aLat','aLng','aStructure','aScheme'].forEach(i=>$('#'+i).value='');photoData='';$('#pPrev').style.display='none';$('#aGpsInfo').textContent='';
+    ['aComp','aLocation','aLat','aLng','aStructureOther','aSchemeOther'].forEach(i=>$('#'+i).value='');$('#aStructureOther').hidden=$('#aSchemeOther').hidden=true;photoData='';$('#pPrev').style.display='none';$('#aGpsInfo').textContent='';
     reloadSheet();
   }catch(err){addMsg('err','Not saved: '+esc(err.message)+'. Check the connection and the PIN, then try again.')}
   finally{$('#aSave').disabled=false}});
