@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forest Civil Works Database - Amrabad Tiger Reserve</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* VOICE: a field officer's register, calm and exact
+   IDEA: the reserve's works ledger, laid over the forest itself
+   PICTURE: satellite map of the reserve with every work pinned
+   COLOUR and TYPE: forest green field, sand paper, tiger orange accent; Outfit + Inter
+   LAYOUT: green band with title and figures, filter bar, tabbed views (dashboard, map, works, reports) */
+:root{color-scheme:light dark;
+ --bg:light-dark(#f6f3ea,#0f1a14);--card:light-dark(#ffffff,#16241c);--ink:light-dark(#14231a,#e8efe9);
+ --mute:light-dark(#5b6b60,#9db1a3);--line:light-dark(#e2ddcc,#25382c);
+ --forest:#1d4d32;--forest2:#2f6b47;--sand:#e9dfc4;--tiger:#e8791d}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Inter,system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:Outfit,Inter,sans-serif;line-height:1.1;margin:0;text-wrap:balance}
+a{color:var(--forest2)}
+header{background:var(--forest);color:#f4f1e6;padding:28px max(4vw,16px) 22px}
+header .org{font-size:14px;opacity:.8}
+header h1{font-size:clamp(26px,4vw,42px);font-weight:700;margin:4px 0 18px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.kpi{background:rgba(255,255,255,.08);border-radius:10px;padding:12px 14px}
+.kpi b{display:block;font:700 clamp(24px,3vw,32px)/1.1 Outfit,sans-serif}
+.kpi span{font-size:13px;opacity:.85}
+.kpi.hi b{color:#ffb066}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--forest);padding:0 max(4vw,16px)}
+nav.tabs button{background:none;border:0;color:#cfe0d4;font:600 15px Inter,sans-serif;padding:12px 16px;min-height:44px;cursor:pointer;border-bottom:3px solid transparent}
+nav.tabs button[aria-selected=true]{color:#fff;border-color:var(--tiger)}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:16px max(4vw,16px);background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1000}
+.filters label{font-size:13px;color:var(--mute);display:grid;gap:3px}
+select,input,button.btn{font:16px Inter,sans-serif;min-height:40px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--bg);color:var(--ink)}
+button.btn{cursor:pointer;background:var(--forest2);color:#fff;border:0;font-weight:600;padding:8px 14px}
+button.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+:focus-visible{outline:3px solid var(--tiger);outline-offset:2px}
+main{padding:20px max(4vw,16px) 40px;max-width:1400px;margin:0 auto}
+.view{display:none}.view.on{display:block}
+.status{font-size:13px;color:var(--mute);margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h3{font-size:18px;margin-bottom:10px}
+.bars{display:grid;gap:7px}
+.bar{display:grid;grid-template-columns:minmax(90px,38%) 1fr 34px;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+.bar .t{height:18px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar .t i{display:block;height:100%;background:var(--forest2);border-radius:4px}
+.bar:hover .t i{background:var(--tiger)}
+.bar .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.fig{position:relative;height:220px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
+#map{height:min(72vh,680px);border-radius:12px;border:1px solid var(--line)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:14px;margin-top:10px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px;border:2px solid #fff;box-shadow:0 0 0 1px #0004}
+.pop{font:14px/1.4 Inter,sans-serif;width:240px}
+.pop img{width:100%;height:150px;object-fit:cover;border-radius:6px;background:#ddd}
+.pop b{font-family:Outfit,sans-serif;font-size:16px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.toolbar .sp{flex:1}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;background:var(--card)}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:var(--sand);color:#14231a;font-weight:600;position:sticky;top:0;cursor:pointer;white-space:nowrap}
+td{overflow-wrap:break-word}
+td.nw{white-space:nowrap}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.tot td{font-weight:700;background:light-dark(#f1ecdc,#1c2e23)}
+td img{width:64px;height:48px;object-fit:cover;border-radius:4px;cursor:zoom-in;background:#ccc}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.wcard{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.wcard img{width:100%;height:170px;object-fit:cover;display:block;background:#cfd8cf;cursor:zoom-in}
+.wcard .b{padding:10px 12px;font-size:14px}
+.wcard .b b{font-family:Outfit,sans-serif;font-size:17px}
+.tag{display:inline-block;background:var(--sand);color:#14231a;border-radius:20px;padding:1px 9px;font-size:12px;margin:2px 4px 2px 0}
+.tag.o{background:var(--tiger);color:#fff}
+.noimg{height:170px;display:grid;place-items:center;background:var(--line);color:var(--mute);font-size:13px}
+#lb{position:fixed;inset:0;background:#000c;display:none;place-items:center;z-index:3000;padding:20px}
+#lb.on{display:grid}#lb img{max-width:100%;max-height:85vh;border-radius:8px}
+#lb p{color:#fff;text-align:center}
+.rep h2{font-size:22px;margin:4px 0 12px}
+.empty{padding:30px;text-align:center;color:var(--mute)}
+footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1px solid var(--line)}
+@media print{nav.tabs,.filters,.toolbar,footer,.noprint{display:none!important}.view{display:none!important}.view.print{display:block!important}header{padding:10px;background:#fff;color:#000}.kpi{background:#eee}body{background:#fff;color:#000}th{position:static}}
+@media(max-width:600px){.filters{position:static}table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal;color:var(--mute)}.stack td:empty{display:none}}
+</style>
+</head>
+<body>
+<header>
+ <div class="org">Telangana Forest Department · Amrabad Tiger Reserve</div>
+ <h1>Forest Civil Works Database</h1>
+ <div class="kpis" id="kpis"></div>
+</header>
+<nav class="tabs" role="tablist">
+ <button role="tab" data-v="dash" aria-selected="true">Dashboard</button>
+ <button role="tab" data-v="map">Satellite map</button>
+ <button role="tab" data-v="works">Works &amp; photos</button>
+ <button role="tab" data-v="reports">Reports</button>
+</nav>
+<section class="filters" id="filters" aria-label="Filters"></section>
+<main>
+ <div class="status" id="status">Loading data from Google Sheet…</div>
+
+ <section class="view on" id="v-dash">
+  <div class="grid" id="charts"></div>
+ </section>
+
+ <section class="view" id="v-map">
+  <div id="map"></div>
+  <div class="legend" id="legend"></div>
+ </section>
+
+ <section class="view" id="v-works">
+  <div class="toolbar">
+   <button class="btn ghost" id="mCards" aria-pressed="true">Photo cards</button>
+   <button class="btn ghost" id="mTable" aria-pressed="false">Table</button>
+   <span class="sp"></span>
+   <button class="btn" id="csvWorks">Download CSV</button>
+  </div>
+  <div id="worksOut"></div>
+ </section>
+
+ <section class="view rep" id="v-reports">
+  <div class="toolbar">
+   <label>Rows <select id="rRow"></select></label>
+   <label>Columns <select id="rCol"></select></label>
+   <span class="sp"></span>
+   <button class="btn ghost" id="csvRep">Download CSV</button>
+   <button class="btn" id="printRep">Print / PDF</button>
+  </div>
+  <div id="repOut"></div>
+ </section>
+</main>
+<footer>Data is read live from the <i>works</i> sheet of the Civil Works Google Sheet each time the page opens. Photos come from the linked Google Drive folder. <span id="loaded"></span></footer>
+<div id="lb" role="dialog" aria-label="Photo"><div><img id="lbImg" alt=""><p id="lbCap"></p></div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+{
+const SHEET_ID='1zQYDFJ8cJNiZhuKysX9rHrJRUg--cde7or3h9hllRSQ', SHEET_NAME='works';
+// Snapshot used only if the live sheet cannot be reached (taken 22 Nov 2026)
+const SNAP=[["ID_No","DIVISION","RANGE","SECTION","BEAT","COMP_NO","Location","Scheme","Year","STRUCTURE","Latitude","Longitude","Photo_url","KMLfile","Picture taken date"],
+["5002","Achampet","Achampet","Achampet","Achampet","54","Naganna cheruvu","CAMPA","2023-24","Plantation","16.401653","78.649504","https://drive.google.com/file/d/1cBo8aB_MrAyxbSf3pgCR-smBzBG_OKXb/view","","25/07/2023"],
+["5008","Achampet","Achampet","Achampet","Achampet","54","Naganna cheruvu","CAMPA","2023-24","Plantation","16.399023","78.636501","https://drive.google.com/file/d/1dNOSPUIn586JBAmwZNgg44OXLeYUwuz7/view","","25/07/2023"],
+["5011","Achampet","Achampet","Achampet","Achampet","","Division compound","CAMPA","2023-24","Nursery","16.398069","78.637214","https://drive.google.com/file/d/1s_WpNuV6nuJrEnoISW2ibL4BnfjOc1eN/view","","25/07/2023"],
+["5012","Achampet","Achampet","Achampet","Achampet","","Division compound","CAMPA","2023-24","Nursery","16.398432","78.637214","https://drive.google.com/file/d/1Y01eqYCgFTE1JttwBFoR_dcNyfQdWf4V/view","","25/07/2023"],
+["5013","Achampet","Achampet","Achampet","Achampet","","Division compound","CAMPA","2023-24","Nursery","16.39902","78.636503","https://drive.google.com/file/d/1LfUnkJ1SwUYCiXA2Luuf4cjOMwKesjkN/view","","25/07/2023"],
+["5015","Achampet","Achampet","Achampet","Achampet","","Saffari road","TCF","2022-23","Forest Road","16.399155","78.636557","https://drive.google.com/file/d/1XEoI7uHkTwzyWtfNhilS-eAQWB_KzewV/view","","25/07/2023"],
+["5016","Amrabad","Domalapenta","Thatigundal","Eagalapenta (N)","202","Kadthula Sela","CAMPA","2021-22","Watch Tower","16.16443","78.894817","https://drive.google.com/file/d/1vXJVBpOVMfRk4hrreK3IjmLzkbakyxWq/view","","01/06/2021"],
+["5018","Achampet","Lingal","Lingal","Padmanapally","9","Pedagattu area to kollapur range area","TCF","2022-23","Forest Road","16.17808","78.538888","https://drive.google.com/file/d/15Nn2dFYJyzaxjtD9S3YKtoRR9BZ08RTk/view","","31/10/2023"],
+["5019","Achampet","Lingal","Lingal","Padmanapally","9","Bowramma watch tower area","CSS PT","2022-23","Watch Tower","16.182915","78.555433","https://drive.google.com/file/d/1qLjVd3ygZ9ijC_hV-uUqgGbh5Eyqg_ZB/view","","19/11/2023"],
+["5024","Achampet","Lingal","Lingal","Padmanapally","8","Padmanapally Base camp chinlink pension","TCF","2023-24","Compound wall","16.199933","78.563419","https://drive.google.com/file/d/1ZtPbkpuMWjNBXflEhyDkslf9tLvUIcMS/view","","31/10/2023"],
+["5026","Achampet","Lingal","Lingal","Padmanapally","9","Bowramma watch tower area solar","TCF","2023-24","Watch Tower","16.183037","78.555472","https://drive.google.com/file/d/19IXuwnysKOBSAnVKCeEzYP781ubYlnYh/view","","31/10/2023"],
+["5027","Achampet","Lingal","Lingal","Padmanapally","9","16.175289 78.568323","CAMPA","2024-25","Viewline","16.273103","78.516706","https://drive.google.com/file/d/1mNX9kEvm6IS9qfRQIXpM3BuwSztMvDPM/view","","18/01/2025"],
+["5029","Achampet","Lingal","Lingal","Padmanapally","8","Yerrapenta vagu area to talakayelabanda area 1.10km","CAMPA","2024-25","Fireline","16.273043","78.516645","https://drive.google.com/file/d/1o9JKQoMiNhhqNzxMGVK0WuuT7PsmB4z1/view","","25/02/2025"],
+["5030","Achampet","Lingal","Lingal","Padmanapally","8","Solar PT to pedaguttu area Compt,8,6","CAMPA","2024-25","Fireline","16.273074","78.516663","https://drive.google.com/file/d/1lqnDmFsIZoZlt_9yq0TFyFgOGLi9ZCTa/view","","25/02/2025"]];
+
+const DIMS=[['division','Division'],['range','Range'],['section','Section'],['beat','Beat'],['scheme','Scheme'],['year','Year'],['structure','Structure']];
+const PAL=['#e8791d','#2f9e5b','#2b7bd6','#c23b6b','#8a5cd1','#d4a514','#16a3a3','#7a4b2a','#5d7a1f','#e04a3a'];
+let ALL=[], F={}, q='', worksMode='cards', sortKey='id', sortDir=1, map, mk, colorOf={};
+const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=h=>String(h||'').toLowerCase().replace(/[^a-z]/g,'');
+const KEY={idno:'id',division:'division',range:'range',section:'section',beat:'beat',compno:'comp',location:'location',scheme:'scheme',year:'year',structure:'structure',latitude:'lat',longitude:'lng',photourl:'photo',kmlfile:'kml',picturetakendate:'date'};
+
+function fromRows(rows){
+  const hd=rows[0].map(h=>KEY[norm(h)]||norm(h));
+  return rows.slice(1).filter(r=>r.some(v=>String(v??'').trim())).map(r=>{
+    const o={};hd.forEach((k,i)=>o[k]=String(r[i]??'').trim());
+    o.latN=parseFloat(o.lat);o.lngN=parseFloat(o.lng);
+    o.hasGeo=isFinite(o.latN)&&isFinite(o.lngN)&&Math.abs(o.latN)>0;
+    const m=(o.photo||'').match(/[-\w]{25,}/);o.pid=m?m[0]:'';
+    o.thumb=o.pid?`https://drive.google.com/thumbnail?id=${o.pid}&sz=w800`:(/^https?:.*\.(jpe?g|png|webp)/i.test(o.photo)?o.photo:'');
+    o.big=o.pid?`https://drive.google.com/thumbnail?id=${o.pid}&sz=w1600`:o.thumb;
+    for(const[k]of DIMS)o[k]=o[k]||'(blank)';
+    return o});
+}
+// Live load through Google's JSONP endpoint (works on any static host and from a local file)
+window.__onSheet=resp=>{
+  try{
+    const t=resp.table;const head=t.cols.map(c=>c.label);
+    const rows=t.rows.map(r=>t.cols.map((c,i)=>{const x=r.c&&r.c[i];if(!x||x.v==null)return '';
+      if(typeof x.v==='number')return String(x.v);if(typeof x.v==='string'&&x.v.startsWith('Date('))return x.f||x.v;return String(x.v)}));
+    if(!head.some(h=>norm(h)==='idno'))throw new Error('Header row not recognised');
+    start(fromRows([head,...rows]),'Live data from Google Sheet');
+  }catch(e){start(fromRows(SNAP),'Could not read the live sheet ('+e.message+'). Showing the saved snapshot of 22 Nov 2026.')}
+};
+const sc=document.createElement('script');
+sc.src=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:__onSheet&sheet=${encodeURIComponent(SHEET_NAME)}&headers=1&t=${Date.now()}`;
+sc.onerror=()=>start(fromRows(SNAP),'Could not reach Google Sheets. Showing the saved snapshot of 22 Nov 2026.');
+document.body.appendChild(sc);
+let started=false;
+setTimeout(()=>{if(!started)start(fromRows(SNAP),'Google Sheets did not answer in time. Showing the saved snapshot of 22 Nov 2026.')},12000);
+
+function start(data,msg){
+  if(started)return;started=true;ALL=data;
+  $('#status').textContent=msg+' · '+ALL.length+' works';
+  $('#loaded').textContent='Loaded '+new Date().toLocaleString('en-IN')+'.';
+  [...new Set(ALL.map(d=>d.structure))].sort().forEach((s,i)=>colorOf[s]=PAL[i%PAL.length]);
+  try{const s=JSON.parse(localStorage.getItem('atrF')||'{}');F=s.F||{};q=s.q||''}catch(e){}
+  buildFilters();buildReportSel();render();
+}
+const uniq=(arr,k)=>[...new Set(arr.map(d=>d[k]))].sort((a,b)=>a.localeCompare(b,'en',{numeric:true}));
+function rowsFor(skip){return ALL.filter(d=>DIMS.every(([k])=>k===skip||!F[k]||d[k]===F[k])&&(!q||Object.values(d).join(' ').toLowerCase().includes(q.toLowerCase())))}
+function buildFilters(){
+  $('#filters').innerHTML=DIMS.map(([k,l])=>`<label>${l}<select id="f-${k}" data-k="${k}"></select></label>`).join('')+
+   `<label>Search<input id="fq" type="search" placeholder="ID, location, comp. no…" value="${esc(q)}"></label>
+    <label>&nbsp;<button class="btn ghost" id="fclr">Clear filters</button></label>`;
+  $('#filters').addEventListener('change',e=>{const k=e.target.dataset.k;if(k){F[k]=e.target.value;render()}});
+  $('#fq').addEventListener('input',e=>{q=e.target.value;render()});
+  $('#fclr').addEventListener('click',()=>{F={};q='';$('#fq').value='';render()});
+}
+function syncFilters(){ // cascading options: each list shows values available under the other filters
+  for(const[k]of DIMS){const s=$('#f-'+k);const opts=uniq(rowsFor(k),k);if(F[k]&&!opts.includes(F[k]))opts.unshift(F[k]);
+    s.innerHTML='<option value="">All</option>'+opts.map(v=>`<option${v===F[k]?' selected':''}>${esc(v)}</option>`).join('')}
+  try{localStorage.setItem('atrF',JSON.stringify({F,q}))}catch(e){}
+}
+function count(rows,k){const m={};rows.forEach(d=>m[d[k]]=(m[d[k]]||0)+1);return Object.entries(m).sort((a,b)=>b[1]-a[1])}
+
+function render(){
+  syncFilters();const R=rowsFor();
+  const yrs=uniq(R,'year').filter(y=>y!=='(blank)');
+  $('#kpis').innerHTML=[[R.length,'Works shown'+(R.length!==ALL.length?' of '+ALL.length:''),'hi'],[uniq(R,'structure').length,'Structure types'],[uniq(R,'range').length,'Ranges'],[uniq(R,'scheme').length,'Schemes'],[yrs.length,yrs.length?'Financial years ('+yrs[0]+(yrs.length>1?' to '+yrs.at(-1):'')+')':'Financial years'],[R.filter(d=>d.thumb).length,'With photos'],[R.filter(d=>d.hasGeo).length,'Geo-tagged']]
+    .map(([v,l,c])=>`<div class="kpi ${c||''}"><b>${v}</b><span>${l}</span></div>`).join('');
+  renderCharts(R);renderMap(R);renderWorks(R);renderReport(R);
+}
+function barCard(title,rows,k){
+  const c=count(rows,k),mx=Math.max(1,...c.map(x=>x[1]));
+  return `<div class="card"><h3>${title}</h3><div class="bars">${c.length?c.map(([v,n])=>`<div class="bar" data-k="${k}" data-v="${esc(v)}" title="Filter by ${esc(v)}"><span>${esc(v)}</span><span class="t"><i style="width:${n/mx*100}%;${k==='structure'?'background:'+colorOf[v]:''}"></i></span><span class="n">${n}</span></div>`).join(''):'<div class="empty">No works</div>'}</div></div>`;
+}
+function renderCharts(R){
+  const yrs=uniq(R,'year'),sch=uniq(R,'scheme');
+  $('#charts').innerHTML=`<div class="card" style="grid-column:1/-1"><h3>Works by financial year and scheme</h3><div class="fig" id="yfig"><svg></svg></div><div class="legend">${sch.map((s,i)=>`<span><i style="background:${PAL[(i+2)%PAL.length]}"></i>${esc(s)}</span>`).join('')}</div></div>`+
+    barCard('By structure type',R,'structure')+barCard('By scheme',R,'scheme')+barCard('By range',R,'range')+barCard('By beat',R,'beat')+barCard('By division',R,'division')+barCard('By section',R,'section');
+  const fig=$('#yfig'),svg=fig.querySelector('svg');
+  const draw=()=>{const W=fig.clientWidth,H=fig.clientHeight,pl=30,pb=26,pt=24;if(!W)return;
+    const st=yrs.map(y=>sch.map(s=>R.filter(d=>d.year===y&&d.scheme===s).length));
+    const mx=Math.max(1,...st.map(a=>a.reduce((x,y)=>x+y,0)));const bw=(W-pl)/Math.max(1,yrs.length);
+    let g='';const stp=Math.max(1,Math.ceil(mx/5));for(let v=0;v<=mx;v+=stp){y=H-pb-(H-pb-pt)*v/mx;g+=`<line x1="${pl}" x2="${W}" y1="${y}" y2="${y}" stroke="currentColor" opacity=".12"/><text x="${pl-6}" y="${y+4}" text-anchor="end" font-size="12" fill="currentColor" opacity=".7">${v}</text>`}
+    yrs.forEach((y,i)=>{let acc=0;const x=pl+i*bw+bw*.2,w=bw*.6;
+      st[i].forEach((n,j)=>{if(!n)return;const h=(H-pb-pt)*n/mx,yy=H-pb-(H-pb-pt)*(acc+n)/mx;acc+=n;g+=`<rect x="${x}" y="${yy}" width="${w}" height="${h}" fill="${PAL[(j+2)%PAL.length]}"><title>${esc(y)} · ${esc(sch[j])}: ${n}</title></rect>`});
+      const top=H-pb-(H-pb-pt)*acc/mx;g+=`<text x="${x+w/2}" y="${top-4}" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">${acc}</text><text x="${x+w/2}" y="${H-8}" text-anchor="middle" font-size="12" fill="currentColor">${esc(y)}</text>`});
+    svg.innerHTML=g};
+  window.__ydraw=draw;draw();if(!window.__yro){window.__yro=new ResizeObserver(()=>window.__ydraw());}window.__yro.disconnect();window.__yro.observe(fig);
+}
+$('#charts').addEventListener('click',e=>{const b=e.target.closest('.bar');if(b){F[b.dataset.k]=F[b.dataset.k]===b.dataset.v?'':b.dataset.v;render()}});
+
+function popup(d){return `<div class="pop">${d.thumb?`<img src="${d.thumb}" alt="Photo of work ${esc(d.id)}" loading="lazy" data-big="${d.big}" data-cap="${esc(d.id+' · '+d.structure+' · '+d.location)}">`:''}
+  <b>${esc(d.structure)} · ID ${esc(d.id)}</b><br>${esc(d.location)}<br>${esc(d.range)} range · ${esc(d.beat)} beat${d.comp?' · Comp. '+esc(d.comp):''}<br>${esc(d.scheme)} · ${esc(d.year)}${d.date?' · Photo '+esc(d.date):''}<br>
+  <span style="font-size:12px">${d.latN.toFixed(6)}, ${d.lngN.toFixed(6)}</span><br>
+  <a href="https://www.google.com/maps/search/?api=1&query=${d.latN},${d.lngN}" target="_blank" rel="noopener">Open in Google Maps</a>${d.kml?` · <a href="${esc(d.kml)}" target="_blank" rel="noopener">KML</a>`:''}</div>`}
+function renderMap(R){
+  if(typeof L==='undefined'){$('#map').innerHTML='<div class="empty">The map library could not load. Check the internet connection.</div>';return}
+  if(!map){
+    const g=l=>L.tileLayer(`https://mt{s}.google.com/vt/lyrs=${l}&x={x}&y={y}&z={z}`,{subdomains:'0123',maxZoom:21,attribution:'Imagery © Google'});
+    const base={'Google satellite + labels':g('s,h'),'Google satellite':g('s'),'Google terrain':g('p'),'Google roads':g('m'),
+      'Esri World Imagery':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'}),
+      'OpenStreetMap':L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'})};
+    map=L.map('map',{layers:[base['Google satellite + labels']]}).setView([16.3,78.7],10);
+    L.control.layers(base).addTo(map);L.control.scale().addTo(map);mk=L.featureGroup().addTo(map);
+  }
+  mk.clearLayers();
+  R.filter(d=>d.hasGeo).forEach(d=>L.circleMarker([d.latN,d.lngN],{radius:8,color:'#fff',weight:2,fillColor:colorOf[d.structure],fillOpacity:.95}).bindPopup(popup(d),{maxWidth:260}).bindTooltip(d.id+' · '+d.structure).addTo(mk));
+  if(mk.getLayers().length&&$('#v-map').classList.contains('on'))map.fitBounds(mk.getBounds().pad(.2),{maxZoom:16});else map.__fitted=0;
+  $('#legend').innerHTML=uniq(R,'structure').map(s=>`<span><i style="background:${colorOf[s]}"></i>${esc(s)} (${R.filter(d=>d.structure===s).length})</span>`).join('')+
+    (R.some(d=>!d.hasGeo)?`<span>${R.filter(d=>!d.hasGeo).length} works have no coordinates</span>`:'');
+}
+const COLS=[['id','ID'],['division','Division'],['range','Range'],['section','Section'],['beat','Beat'],['comp','Comp.'],['location','Location'],['scheme','Scheme'],['year','Year'],['structure','Structure'],['lat','Latitude'],['lng','Longitude'],['date','Photo date']];
+function renderWorks(R){
+  const S=[...R].sort((a,b)=>String(a[sortKey]).localeCompare(String(b[sortKey]),'en',{numeric:true})*sortDir);
+  if(!S.length){$('#worksOut').innerHTML='<div class="empty">No works match these filters.</div>';return}
+  if(worksMode==='cards'){
+    $('#worksOut').innerHTML=`<div class="cards">${S.map(d=>`<article class="wcard">${d.thumb?`<img src="${d.thumb}" alt="Photo of work ${esc(d.id)}" loading="lazy" data-big="${d.big}" data-cap="${esc(d.id+' · '+d.structure+' · '+d.location)}">`:'<div class="noimg">No photo</div>'}
+      <div class="b"><b>${esc(d.structure)}</b> <span style="color:var(--mute)">· ID ${esc(d.id)}</span><br>${esc(d.location)}<br>
+      <span class="tag o">${esc(d.scheme)}</span><span class="tag">${esc(d.year)}</span><span class="tag">${esc(d.range)}</span><span class="tag">${esc(d.beat)}</span>${d.comp?`<span class="tag">Comp. ${esc(d.comp)}</span>`:''}<br>
+      ${d.hasGeo?`<a href="#" data-fly="${esc(d.id)}">Show on map</a> · <a href="https://www.google.com/maps/search/?api=1&query=${d.latN},${d.lngN}" target="_blank" rel="noopener">Google Maps</a>`:'No coordinates'}${d.photo?` · <a href="${esc(d.photo)}" target="_blank" rel="noopener">Photo</a>`:''}</div></article>`).join('')}</div>`;
+  }else{
+    $('#worksOut').innerHTML=`<div class="scroll"><table class="stack"><thead><tr><th>Photo</th>${COLS.map(([k,l])=>`<th data-s="${k}">${l}${sortKey===k?(sortDir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>${S.map(d=>`<tr><td>${d.thumb?`<img src="${d.thumb}" alt="" loading="lazy" data-big="${d.big}" data-cap="${esc(d.id+' · '+d.structure)}">`:''}</td>${COLS.map(([k])=>`<td class="${k==='year'||k==='date'?'nw':''}">${k==='id'&&d.hasGeo?`<a href="#" data-fly="${esc(d.id)}">${esc(d.id)}</a>`:esc(d[k])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+}
+$('#worksOut').addEventListener('click',e=>{const th=e.target.closest('th[data-s]');if(th){const k=th.dataset.s;sortDir=sortKey===k?-sortDir:1;sortKey=k;renderWorks(rowsFor())}
+  const f=e.target.closest('[data-fly]');if(f){e.preventDefault();const d=ALL.find(x=>x.id===f.dataset.fly);show('map');map.setView([d.latN,d.lngN],17);mk.eachLayer(l=>{const p=l.getLatLng();if(p.lat===d.latN&&p.lng===d.lngN)l.openPopup()})}});
+for(const[b,m]of[['#mCards','cards'],['#mTable','table']])$(b).addEventListener('click',()=>{worksMode=m;$('#mCards').setAttribute('aria-pressed',m==='cards');$('#mTable').setAttribute('aria-pressed',m==='table');renderWorks(rowsFor())});
+
+function buildReportSel(){
+  const o=(sel)=>DIMS.map(([k,l])=>`<option value="${k}"${k===sel?' selected':''}>${l}</option>`).join('');
+  $('#rRow').innerHTML=o('structure');$('#rCol').innerHTML='<option value="">(none)</option>'+o('year');
+  $('#rRow').addEventListener('change',()=>renderReport(rowsFor()));$('#rCol').addEventListener('change',()=>renderReport(rowsFor()));
+}
+let REP=[];
+function renderReport(R){
+  const rk=$('#rRow').value,ck=$('#rCol').value,lab=k=>DIMS.find(d=>d[0]===k)[1];
+  const rv=uniq(R,rk),cv=ck?uniq(R,ck):[];
+  const cnt=(r,c)=>R.filter(d=>d[rk]===r&&(c===undefined||d[ck]===c)).length;
+  REP=[[lab(rk),...cv,'Total']];rv.forEach(r=>REP.push([r,...cv.map(c=>cnt(r,c)),cnt(r)]));
+  REP.push(['Total',...cv.map(c=>R.filter(d=>d[ck]===c).length),R.length]);
+  const fl=Object.entries(F).filter(([,v])=>v).map(([k,v])=>lab(k)+': '+v).concat(q?['Search: '+q]:[]);
+  const geo=[...R].sort((a,b)=>a.id.localeCompare(b.id,'en',{numeric:true}));
+  $('#repOut').innerHTML=`<h2>Abstract of civil works: ${lab(rk)}${ck?' by '+lab(ck):''}</h2>
+   <p class="status">${fl.length?'Filters: '+esc(fl.join(' · ')):'All works, no filters'} · Generated ${new Date().toLocaleDateString('en-IN')}</p>
+   <div class="scroll"><table><thead><tr>${REP[0].map((h,i)=>`<th class="${i?'num':''}">${esc(h)}</th>`).join('')}</tr></thead><tbody>
+   ${REP.slice(1).map((r,j)=>`<tr class="${j===REP.length-2?'tot':''}">${r.map((v,i)=>`<td class="${i?'num':''}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+   <h2 style="margin-top:26px">Statement of works (${R.length})</h2>
+   <div class="scroll"><table class="stack"><thead><tr><th>Sl.</th>${COLS.filter(c=>!['lat','lng'].includes(c[0])).map(([,l])=>`<th>${l}</th>`).join('')}<th>Coordinates</th></tr></thead><tbody>
+   ${geo.map((d,i)=>`<tr><td>${i+1}</td>${COLS.filter(c=>!['lat','lng'].includes(c[0])).map(([k])=>`<td class="${k==='year'||k==='date'?'nw':''}">${esc(d[k])}</td>`).join('')}<td>${d.hasGeo?d.latN.toFixed(5)+', '+d.lngN.toFixed(5):''}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function csv(rows,name){const t=rows.map(r=>r.map(v=>/[",\n]/.test(v=String(v??''))?'"'+v.replace(/"/g,'""')+'"':v).join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+t],{type:'text/csv'}));a.download=name;document.body.appendChild(a);a.click();a.remove()}
+$('#csvWorks').addEventListener('click',()=>csv([[...COLS.map(c=>c[1]),'Photo_url'],...rowsFor().map(d=>[...COLS.map(([k])=>d[k]),d.photo])],'atr-civil-works.csv'));
+$('#csvRep').addEventListener('click',()=>csv(REP,'atr-civil-works-report.csv'));
+$('#printRep').addEventListener('click',()=>{document.querySelectorAll('.view').forEach(v=>v.classList.remove('print'));$('#v-reports').classList.add('print');window.print()});
+
+function show(v){document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.v===v));
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
+  if(v==='map'&&map)setTimeout(()=>{map.invalidateSize();if(mk.getLayers().length&&!map.__fitted){map.fitBounds(mk.getBounds().pad(.2),{maxZoom:16});map.__fitted=1}},50);
+  if(location.hash!=='#'+v)history.replaceState(null,'','#'+v)}
+document.querySelector('nav.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)show(b.dataset.v)});
+if(['dash','map','works','reports'].includes(location.hash.slice(1)))show(location.hash.slice(1));
+document.addEventListener('click',e=>{const im=e.target.closest('img[data-big]');if(im){$('#lbImg').src=im.dataset.big;$('#lbCap').textContent=im.dataset.cap;$('#lb').classList.add('on')}});
+$('#lb').addEventListener('click',()=>$('#lb').classList.remove('on'));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#lb').classList.remove('on')});
+}
+</script>
+</body>
+</html>
