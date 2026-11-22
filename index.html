@@ -6,7 +6,7 @@
 <title>Forest Civil Works Database - Amrabad Tiger Reserve</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="assets/leaflet/leaflet.css">
 <style>
 /* VOICE: a field officer's register, calm and exact
    IDEA: the reserve's works ledger, laid over the forest itself
@@ -24,7 +24,10 @@ h1,h2,h3{font-family:Outfit,Inter,sans-serif;line-height:1.1;margin:0;text-wrap:
 a{color:var(--forest2)}
 header{background:var(--forest);color:#f4f1e6;padding:28px max(4vw,16px) 22px}
 header .org{font-size:14px;opacity:.8}
-header h1{font-size:clamp(26px,4vw,42px);font-weight:700;margin:4px 0 18px}
+header h1{font-size:clamp(26px,4vw,42px);font-weight:700;margin:4px 0 0}
+.brand{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.logos{display:flex;gap:10px;flex:none}
+.logos img{width:clamp(52px,7vw,76px);height:clamp(52px,7vw,76px);border-radius:50%;background:#fff;padding:3px;object-fit:contain;box-shadow:0 2px 8px #0004}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
 .kpi{background:rgba(255,255,255,.08);border-radius:10px;padding:12px 14px}
 .kpi b{display:block;font:700 clamp(24px,3vw,32px)/1.1 Outfit,sans-serif}
@@ -52,7 +55,13 @@ main{padding:20px max(4vw,16px) 40px;max-width:1400px;margin:0 auto}
 .bar:hover .t i{background:var(--tiger)}
 .bar .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 .fig{position:relative;height:220px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
+#mapwrap{position:relative;background:#000;border-radius:12px}
 #map{height:min(72vh,680px);border-radius:12px;border:1px solid var(--line)}
+#mapwrap:fullscreen #map,#mapwrap.fs #map{height:100vh;height:100dvh;border-radius:0;border:0}
+#mapwrap.fs{position:fixed;inset:0;z-index:4000;border-radius:0}
+.fsbtn{width:34px;height:34px;display:grid;place-items:center;background:#fff;color:#14231a;cursor:pointer;border:0;font:18px/1 sans-serif;border-radius:4px}
+.kmlinfo{font-size:14px;color:var(--mute)}
+.pop .desc{max-height:120px;overflow:auto;font-size:13px}
 .legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:14px;margin-top:10px}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px;border:2px solid #fff;box-shadow:0 0 0 1px #0004}
 .pop{font:14px/1.4 Inter,sans-serif;width:240px}
@@ -89,8 +98,11 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
 </head>
 <body>
 <header>
- <div class="org">Telangana Forest Department · Amrabad Tiger Reserve</div>
- <h1>Forest Civil Works Database</h1>
+ <div class="brand">
+  <div class="logos"><img src="assets/telangana-logo.png" alt="Government of Telangana"><img src="assets/atr-logo.png" alt="Amrabad Tiger Reserve"></div>
+  <div><div class="org">Telangana Forest Department · Amrabad Tiger Reserve</div>
+  <h1>Forest Civil Works Database</h1></div>
+ </div>
  <div class="kpis" id="kpis"></div>
 </header>
 <nav class="tabs" role="tablist">
@@ -108,7 +120,14 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
  </section>
 
  <section class="view" id="v-map">
-  <div id="map"></div>
+  <div class="toolbar">
+   <button class="btn" id="fsOpen">Full screen</button>
+   <button class="btn ghost" id="kmlOpen">Load KML / KMZ file</button>
+   <button class="btn ghost" id="kmlClear" hidden>Remove loaded file</button>
+   <input type="file" id="kmlFile" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" hidden>
+   <span class="kmlinfo" id="kmlInfo"></span>
+  </div>
+  <div id="mapwrap"><div id="map"></div></div>
   <div class="legend" id="legend"></div>
  </section>
 
@@ -136,7 +155,9 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
 <footer>Data is read live from the <i>works</i> sheet of the Civil Works Google Sheet each time the page opens. Photos come from the linked Google Drive folder. <span id="loaded"></span></footer>
 <div id="lb" role="dialog" aria-label="Photo"><div><img id="lbImg" alt=""><p id="lbCap"></p></div></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/leaflet/leaflet.js"></script>
+<script src="assets/togeojson.umd.js"></script>
+<script src="assets/fflate.umd.js"></script>
 <script>
 {
 const SHEET_ID='1zQYDFJ8cJNiZhuKysX9rHrJRUg--cde7or3h9hllRSQ', SHEET_NAME='works';
@@ -159,7 +180,7 @@ const SNAP=[["ID_No","DIVISION","RANGE","SECTION","BEAT","COMP_NO","Location","S
 
 const DIMS=[['division','Division'],['range','Range'],['section','Section'],['beat','Beat'],['scheme','Scheme'],['year','Year'],['structure','Structure']];
 const PAL=['#e8791d','#2f9e5b','#2b7bd6','#c23b6b','#8a5cd1','#d4a514','#16a3a3','#7a4b2a','#5d7a1f','#e04a3a'];
-let ALL=[], F={}, q='', worksMode='cards', sortKey='id', sortDir=1, map, mk, colorOf={};
+let ALL=[], F={}, q='', worksMode='cards', sortKey='id', sortDir=1, map, mk, kmlL, upL, KG=null, colorOf={};
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const norm=h=>String(h||'').toLowerCase().replace(/[^a-z]/g,'');
 const KEY={idno:'id',division:'division',range:'range',section:'section',beat:'beat',compno:'comp',location:'location',scheme:'scheme',year:'year',structure:'structure',latitude:'lat',longitude:'lng',photourl:'photo',kmlfile:'kml',picturetakendate:'date'};
@@ -193,6 +214,8 @@ document.body.appendChild(sc);
 let started=false;
 setTimeout(()=>{if(!started)start(fromRows(SNAP),'Google Sheets did not answer in time. Showing the saved snapshot of 22 Nov 2026.')},12000);
 
+// KML shapes from the sheet's KMLfile column, converted to GeoJSON by the GitHub Action (scripts/build-kml.mjs)
+fetch('kml/works.geojson?t='+Date.now()).then(r=>r.ok?r.json():null).then(g=>{if(g&&g.features){KG=g;if(started)renderMap(rowsFor())}}).catch(()=>{});
 function start(data,msg){
   if(started)return;started=true;ALL=data;
   $('#status').textContent=msg+' · '+ALL.length+' works';
@@ -248,8 +271,9 @@ $('#charts').addEventListener('click',e=>{const b=e.target.closest('.bar');if(b)
 
 function popup(d){return `<div class="pop">${d.thumb?`<img src="${d.thumb}" alt="Photo of work ${esc(d.id)}" loading="lazy" data-big="${d.big}" data-cap="${esc(d.id+' · '+d.structure+' · '+d.location)}">`:''}
   <b>${esc(d.structure)} · ID ${esc(d.id)}</b><br>${esc(d.location)}<br>${esc(d.range)} range · ${esc(d.beat)} beat${d.comp?' · Comp. '+esc(d.comp):''}<br>${esc(d.scheme)} · ${esc(d.year)}${d.date?' · Photo '+esc(d.date):''}<br>
-  <span style="font-size:12px">${d.latN.toFixed(6)}, ${d.lngN.toFixed(6)}</span><br>
-  <a href="https://www.google.com/maps/search/?api=1&query=${d.latN},${d.lngN}" target="_blank" rel="noopener">Open in Google Maps</a>${d.kml?` · <a href="${esc(d.kml)}" target="_blank" rel="noopener">KML</a>`:''}</div>`}
+  ${d.hasGeo?`<span style="font-size:12px">${d.latN.toFixed(6)}, ${d.lngN.toFixed(6)}</span><br>
+  <a href="https://www.google.com/maps/search/?api=1&query=${d.latN},${d.lngN}" target="_blank" rel="noopener">Open in Google Maps</a>`:''}${/^https?:/i.test(d.kml)?` · <a href="${esc(d.kml)}" target="_blank" rel="noopener">KML file</a>`:''}</div>`}
+function fitAll(){const B=L.latLngBounds([]);[mk,kmlL].forEach(g=>{if(g&&map.hasLayer(g)&&g.getLayers().length)B.extend(g.getBounds())});if(B.isValid())map.fitBounds(B.pad(.15),{maxZoom:16})}
 function renderMap(R){
   if(typeof L==='undefined'){$('#map').innerHTML='<div class="empty">The map library could not load. Check the internet connection.</div>';return}
   if(!map){
@@ -258,13 +282,23 @@ function renderMap(R){
       'Esri World Imagery':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'}),
       'OpenStreetMap':L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'})};
     map=L.map('map',{layers:[base['Google satellite + labels']]}).setView([16.3,78.7],10);
-    L.control.layers(base).addTo(map);L.control.scale().addTo(map);mk=L.featureGroup().addTo(map);
+    mk=L.featureGroup().addTo(map);kmlL=L.featureGroup().addTo(map);upL=L.featureGroup().addTo(map);
+    L.control.layers(base,{'Work locations':mk,'KML shapes from sheet':kmlL,'Loaded KML file':upL}).addTo(map);L.control.scale().addTo(map);
+    const FS=L.Control.extend({onAdd(){const b=L.DomUtil.create('button','fsbtn leaflet-bar');b.type='button';b.title='Full screen';b.setAttribute('aria-label','Toggle full screen');b.textContent='⛶';L.DomEvent.on(b,'click',e=>{L.DomEvent.stop(e);toggleFs()});return b}});
+    new FS({position:'topleft'}).addTo(map);
   }
-  mk.clearLayers();
+  mk.clearLayers();kmlL.clearLayers();
+  if(KG){const ids=new Set(R.map(d=>d.id));
+    L.geoJSON({type:'FeatureCollection',features:KG.features.filter(f=>ids.has(String(f.properties.workId)))},{
+      style:f=>{const d=ALL.find(x=>x.id===String(f.properties.workId));return{color:d?colorOf[d.structure]:'#ffd400',weight:3,opacity:.95,fillOpacity:.25}},
+      pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5}),
+      onEachFeature:(f,l)=>{const d=ALL.find(x=>x.id===String(f.properties.workId));if(d)l.bindPopup(popup(d),{maxWidth:260}).bindTooltip(d.id+' · '+d.structure+(f.properties.name?' · '+f.properties.name:''))}
+    }).eachLayer(l=>kmlL.addLayer(l))}
   R.filter(d=>d.hasGeo).forEach(d=>L.circleMarker([d.latN,d.lngN],{radius:8,color:'#fff',weight:2,fillColor:colorOf[d.structure],fillOpacity:.95}).bindPopup(popup(d),{maxWidth:260}).bindTooltip(d.id+' · '+d.structure).addTo(mk));
-  if(mk.getLayers().length&&$('#v-map').classList.contains('on'))map.fitBounds(mk.getBounds().pad(.2),{maxZoom:16});else map.__fitted=0;
+  if($('#v-map').classList.contains('on'))fitAll();else map.__fitted=0;
   $('#legend').innerHTML=uniq(R,'structure').map(s=>`<span><i style="background:${colorOf[s]}"></i>${esc(s)} (${R.filter(d=>d.structure===s).length})</span>`).join('')+
-    (R.some(d=>!d.hasGeo)?`<span>${R.filter(d=>!d.hasGeo).length} works have no coordinates</span>`:'');
+    (R.some(d=>!d.hasGeo)?`<span>${R.filter(d=>!d.hasGeo).length} works have no coordinates</span>`:'')+
+    `<span>${kmlL.getLayers().length} KML shapes from the sheet</span>`;
 }
 const COLS=[['id','ID'],['division','Division'],['range','Range'],['section','Section'],['beat','Beat'],['comp','Comp.'],['location','Location'],['scheme','Scheme'],['year','Year'],['structure','Structure'],['lat','Latitude'],['lng','Longitude'],['date','Photo date']];
 function renderWorks(R){
@@ -274,7 +308,7 @@ function renderWorks(R){
     $('#worksOut').innerHTML=`<div class="cards">${S.map(d=>`<article class="wcard">${d.thumb?`<img src="${d.thumb}" alt="Photo of work ${esc(d.id)}" loading="lazy" data-big="${d.big}" data-cap="${esc(d.id+' · '+d.structure+' · '+d.location)}">`:'<div class="noimg">No photo</div>'}
       <div class="b"><b>${esc(d.structure)}</b> <span style="color:var(--mute)">· ID ${esc(d.id)}</span><br>${esc(d.location)}<br>
       <span class="tag o">${esc(d.scheme)}</span><span class="tag">${esc(d.year)}</span><span class="tag">${esc(d.range)}</span><span class="tag">${esc(d.beat)}</span>${d.comp?`<span class="tag">Comp. ${esc(d.comp)}</span>`:''}<br>
-      ${d.hasGeo?`<a href="#" data-fly="${esc(d.id)}">Show on map</a> · <a href="https://www.google.com/maps/search/?api=1&query=${d.latN},${d.lngN}" target="_blank" rel="noopener">Google Maps</a>`:'No coordinates'}${d.photo?` · <a href="${esc(d.photo)}" target="_blank" rel="noopener">Photo</a>`:''}</div></article>`).join('')}</div>`;
+      ${d.hasGeo?`<a href="#" data-fly="${esc(d.id)}">Show on map</a> · <a href="https://www.google.com/maps/search/?api=1&query=${d.latN},${d.lngN}" target="_blank" rel="noopener">Google Maps</a>`:'No coordinates'}${d.kml?' · <span class="tag">KML</span>':''}${d.photo?` · <a href="${esc(d.photo)}" target="_blank" rel="noopener">Photo</a>`:''}</div></article>`).join('')}</div>`;
   }else{
     $('#worksOut').innerHTML=`<div class="scroll"><table class="stack"><thead><tr><th>Photo</th>${COLS.map(([k,l])=>`<th data-s="${k}">${l}${sortKey===k?(sortDir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>${S.map(d=>`<tr><td>${d.thumb?`<img src="${d.thumb}" alt="" loading="lazy" data-big="${d.big}" data-cap="${esc(d.id+' · '+d.structure)}">`:''}</td>${COLS.map(([k])=>`<td class="${k==='year'||k==='date'?'nw':''}">${k==='id'&&d.hasGeo?`<a href="#" data-fly="${esc(d.id)}">${esc(d.id)}</a>`:esc(d[k])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
@@ -311,9 +345,29 @@ $('#csvWorks').addEventListener('click',()=>csv([[...COLS.map(c=>c[1]),'Photo_ur
 $('#csvRep').addEventListener('click',()=>csv(REP,'atr-civil-works-report.csv'));
 $('#printRep').addEventListener('click',()=>{document.querySelectorAll('.view').forEach(v=>v.classList.remove('print'));$('#v-reports').classList.add('print');window.print()});
 
+function toggleFs(){const w=$('#mapwrap');
+  if(document.fullscreenElement){document.exitFullscreen();return}
+  if(w.classList.contains('fs')){w.classList.remove('fs');setTimeout(()=>map.invalidateSize(),60);return}
+  if(w.requestFullscreen)w.requestFullscreen().catch(()=>w.classList.add('fs'));else w.classList.add('fs');
+  setTimeout(()=>map&&map.invalidateSize(),200)}
+document.addEventListener('fullscreenchange',()=>setTimeout(()=>map&&map.invalidateSize(),100));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#mapwrap').classList.contains('fs'))toggleFs()});
+$('#fsOpen').addEventListener('click',toggleFs);
+$('#kmlOpen').addEventListener('click',()=>$('#kmlFile').click());
+$('#kmlClear').addEventListener('click',()=>{upL.clearLayers();$('#kmlInfo').textContent='';$('#kmlClear').hidden=true});
+$('#kmlFile').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file||!map)return;
+  try{const buf=new Uint8Array(await file.arrayBuffer());let txt;
+    if(buf[0]===0x50&&buf[1]===0x4b){const z=fflate.unzipSync(buf);const k=Object.keys(z).find(n=>/\.kml$/i.test(n));if(!k)throw new Error('no .kml inside the KMZ');txt=fflate.strFromU8(z[k])}
+    else txt=new TextDecoder().decode(buf);
+    const gj=toGeoJSON.kml(new DOMParser().parseFromString(txt,'text/xml'));if(!gj.features.length)throw new Error('no shapes found');
+    const lay=L.geoJSON(gj,{style:{color:'#ffd400',weight:3,dashArray:'6 4',fillOpacity:.2},pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:6,color:'#ffd400',fillOpacity:.9}),
+      onEachFeature:(f,l)=>{const p=f.properties||{};l.bindPopup(`<div class="pop"><b>${esc(p.name||file.name)}</b>${p.description?`<div class="desc">${esc(String(p.description).replace(/<[^>]*>/g,' '))}</div>`:''}</div>`)}});
+    upL.addLayer(lay);map.fitBounds(lay.getBounds().pad(.15),{maxZoom:17});
+    $('#kmlInfo').textContent=`Showing ${file.name} (${gj.features.length} shapes). This file stays on your device only; to keep it, put its Drive link in the sheet's KMLfile column.`;$('#kmlClear').hidden=false;
+  }catch(err){$('#kmlInfo').textContent='Could not read '+file.name+': '+err.message}});
 function show(v){document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.v===v));
   document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
-  if(v==='map'&&map)setTimeout(()=>{map.invalidateSize();if(mk.getLayers().length&&!map.__fitted){map.fitBounds(mk.getBounds().pad(.2),{maxZoom:16});map.__fitted=1}},50);
+  if(v==='map'&&map)setTimeout(()=>{map.invalidateSize();if(!map.__fitted){fitAll();map.__fitted=1}},50);
   if(location.hash!=='#'+v)history.replaceState(null,'','#'+v)}
 document.querySelector('nav.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)show(b.dataset.v)});
 if(['dash','map','works','reports'].includes(location.hash.slice(1)))show(location.hash.slice(1));
