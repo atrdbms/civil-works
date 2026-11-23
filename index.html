@@ -91,6 +91,13 @@ td img{width:64px;height:48px;object-fit:cover;border-radius:4px;cursor:zoom-in;
 .tag{display:inline-block;background:var(--sand);color:#14231a;border-radius:20px;padding:1px 9px;font-size:12px;margin:2px 4px 2px 0}
 .tag.o{background:var(--tiger);color:#fff}
 .noimg{height:170px;display:grid;place-items:center;background:var(--line);color:var(--mute);font-size:13px}
+#cam{position:fixed;inset:0;background:#000;z-index:5000;display:none;flex-direction:column}
+#cam.on{display:flex}
+#cam video{flex:1;min-height:0;width:100%;object-fit:contain;background:#000}
+#cam .bar{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:14px;padding-bottom:max(14px,env(safe-area-inset-bottom))}
+#cam .shut{width:72px;height:72px;border-radius:50%;border:5px solid #fff;background:#f29b1d;cursor:pointer}
+#cam .msgc{color:#fff;text-align:center;padding:8px;font-size:14px}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 #lb{position:fixed;inset:0;background:#000c;display:none;place-items:center;z-index:3000;padding:20px}
 #lb.on{display:grid}#lb img{max-width:100%;max-height:85vh;border-radius:8px}
 #lb p{color:#fff;text-align:center}
@@ -160,8 +167,8 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
      <div class="photobox">
       <button type="button" class="btn" id="aCam">Take photo</button>
       <button type="button" class="btn ghost" id="aGal">Choose from gallery</button>
-      <input type="file" id="aCamIn" accept="image/*" capture="environment" hidden>
-      <input type="file" id="aGalIn" accept="image/*" hidden>
+      <input type="file" id="aCamIn" class="vh" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
+      <input type="file" id="aGalIn" class="vh" accept="image/*" tabindex="-1" aria-hidden="true">
       <img id="pPrev" alt="Selected photo preview">
      </div></div>
     <div class="wide"><div style="font-size:14px;font-weight:600;margin-bottom:6px">KML / KMZ file <small style="font-weight:400;color:var(--mute)">(optional, boundary or line of the work)</small></div>
@@ -217,6 +224,8 @@ footer{padding:16px max(4vw,16px);font-size:13px;color:var(--mute);border-top:1p
  </section>
 </main>
 <footer>Data is read live from the <i>works</i> sheet of the Civil Works Google Sheet each time the page opens. Photos come from the linked Google Drive folder. <span id="loaded"></span></footer>
+<div id="cam" role="dialog" aria-label="Camera"><div class="msgc" id="camMsg">Point the camera at the work and press the orange button</div><video id="camV" playsinline autoplay muted></video>
+ <div class="bar"><button type="button" class="btn ghost" id="camX" style="background:#fff">Cancel</button><button type="button" class="shut" id="camShot" aria-label="Capture photo"></button><button type="button" class="btn ghost" id="camFlip" style="background:#fff">Switch camera</button></div></div>
 <div id="lb" role="dialog" aria-label="Photo"><div><img id="lbImg" alt=""><p id="lbCap"></p></div></div>
 
 <script src="assets/leaflet/leaflet.js"></script>
@@ -450,7 +459,21 @@ $('#aKmlIn').addEventListener('change',async e=>{const f=e.target.files[0];e.tar
     if(!$('#aLat').value&&!$('#aLng').value&&typeof L!=='undefined'){const c=L.geoJSON(gj).getBounds().getCenter();$('#aLat').value=c.lat.toFixed(6);$('#aLng').value=c.lng.toFixed(6);msg+='. Latitude/longitude filled from its centre.'}
     $('#aKmlInfo').textContent=msg;$('#aKmlClr').hidden=false;
   }catch(err){kmlData=kmlName='';$('#aKmlInfo').textContent='Could not read '+f.name+': '+err.message;$('#aKmlClr').hidden=true}});
-$('#aCam').addEventListener('click',()=>$('#aCamIn').click());$('#aGal').addEventListener('click',()=>$('#aGalIn').click());
+// Camera: open a live camera inside the page (works in most phone browsers); fall back to the phone's own camera picker
+let camStream=null,camFacing='environment';
+async function camStart(){camStop();camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:camFacing},width:{ideal:1920},height:{ideal:1080}},audio:false});$('#camV').srcObject=camStream;await $('#camV').play().catch(()=>{})}
+function camStop(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null}}
+function camClose(){camStop();$('#cam').classList.remove('on')}
+$('#aCam').addEventListener('click',async()=>{
+  if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.isSecureContext){
+    try{$('#cam').classList.add('on');await camStart();return}catch(err){camClose();addMsg('info','The live camera could not start ('+esc(err.name||err.message)+'). Opening the phone camera instead. If nothing opens, use Choose from gallery, or open this page in Chrome or Safari instead of an in-app browser.')}}
+  $('#aCamIn').click()});
+$('#camX').addEventListener('click',camClose);
+$('#camFlip').addEventListener('click',async()=>{camFacing=camFacing==='environment'?'user':'environment';try{await camStart()}catch(e){}});
+$('#camShot').addEventListener('click',()=>{const v=$('#camV');if(!v.videoWidth)return;
+  const k=Math.min(1,1600/Math.max(v.videoWidth,v.videoHeight));const c=document.createElement('canvas');c.width=Math.round(v.videoWidth*k);c.height=Math.round(v.videoHeight*k);
+  c.getContext('2d').drawImage(v,0,0,c.width,c.height);photoData=c.toDataURL('image/jpeg',.85);$('#pPrev').src=photoData;$('#pPrev').style.display='block';camClose()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&camStream)camClose()});$('#aGal').addEventListener('click',()=>$('#aGalIn').click());
 async function takePhoto(e){const f=e.target.files[0];e.target.value='';if(!f)return;
   try{const url=URL.createObjectURL(f);const img=new Image();await new Promise((ok,bad)=>{img.onload=ok;img.onerror=()=>bad(new Error('not an image'));img.src=url});
     const k=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight));const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);
